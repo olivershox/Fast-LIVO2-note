@@ -53,7 +53,7 @@ for i in range(2):
     axs[i].grid()
     axs[i].legend()
 plt.grid()
-
+plt.show()
 # #### Draw time calculation
 # plt.figure(3)
 # fig = plt.figure()
@@ -95,4 +95,4 @@ plt.grid()
 # # # print(a_out3[:,2])
 # plt.grid()
 # plt.savefig("time.pdf", dpi=1200)
-plt.show()
+

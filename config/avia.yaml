@@ -1,5 +1,5 @@
 common:
-  img_topic: "/left_camera/image"
+  img_topic: "/fisheye_camera/image"
   lid_topic: "/livox/lidar"
   imu_topic: "/livox/imu"
   img_en: 1
@@ -7,16 +7,16 @@ common:
   ros_driver_bug_fix: false
 
 extrin_calib:
-  extrinsic_T: [0.04165, 0.02326, -0.0284]
-  extrinsic_R: [1, 0, 0, 0, 1, 0, 0, 0, 1]
-  Rcl: [0.00610193,-0.999863,-0.0154172,
-        -0.00615449,0.0153796,-0.999863,
-        0.999962,0.00619598,-0.0060598] 
-  Pcl: [0.0194384, 0.104689,-0.0251952]
+  extrinsic_T: [0.0011,0.002329,-0.0044]
+  extrinsic_R: [1.0,0.0,0.0, 0.0,1.0,0.0,0.0,0.0,1.0]
+  Rcl: [-0.294916,-0.955476,-0.00939439,
+-0.0553181,-0.0171085,-0.998323,
+0.953873,-0.296388,-0.0477759]
+  Pcl: [-0.256067,0.197202,0.484091]
 
 time_offset: 
   imu_time_offset: 0.0
-  img_time_offset: 0.1
+  img_time_offset: 0.0
   exposure_time_init: 0.0
 
 preprocess:
@@ -57,13 +57,13 @@ lio:
   layer_init_num: [5, 5, 5, 5, 5]
 
 local_map:  
-  map_sliding_en: false
+  map_sliding_en: ture
   half_map_size: 100
   sliding_thresh: 8
 
 uav:
   imu_rate_odom: false
-  gravity_align_en: false
+  gravity_align_en: true
 
 publish:
   dense_map_en: true
@@ -77,7 +77,7 @@ evo:
   pose_output_en: false
 
 pcd_save:
-  pcd_save_en: false
+  pcd_save_en: true
   colmap_output_en: false # need to set interval = -1
   filter_size_pcd: 0.15
   interval: -1
