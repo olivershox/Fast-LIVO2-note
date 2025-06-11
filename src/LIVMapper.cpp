@@ -20,10 +20,10 @@ LIVMapper::LIVMapper(ros::NodeHandle &nh)
   extrinR.assign(9, 0.0);
   cameraextrinT.assign(3, 0.0);
   cameraextrinR.assign(9, 0.0);
-
+  //初始化外参向量和矩阵
   p_pre.reset(new Preprocess());
   p_imu.reset(new ImuProcess());
-
+  //初始化预处理器和IMU处理器
   readParameters(nh);
   VoxelMapConfig voxel_config;
   loadVoxelConfig(nh, voxel_config);
@@ -37,9 +37,10 @@ LIVMapper::LIVMapper(ros::NodeHandle &nh)
   pcl_wait_save.reset(new PointCloudXYZRGB());
   voxelmap_manager.reset(new VoxelMapManager(voxel_config, voxel_map));
   vio_manager.reset(new VIOManager());
+  //体素地图管理器和视觉惯性里程计管理器初始化
   root_dir = ROOT_DIR;
   initializeFiles();
-  initializeComponents();
+  initializeComponents();//初始化各个组件
   path.header.stamp = ros::Time::now();
   path.header.frame_id = "camera_init";
 }
@@ -241,21 +242,21 @@ void LIVMapper::processImu()
 {
   // double t0 = omp_get_wtime();
 
-  p_imu->Process2(LidarMeasures, _state, feats_undistort);
+  p_imu->Process2(LidarMeasures, _state, feats_undistort);//IMU处理，并点云去畸变
 
-  if (gravity_align_en) gravityAlignment();
+  if (gravity_align_en) gravityAlignment(); //重力对齐
 
-  state_propagat = _state;
+  state_propagat = _state;  
   voxelmap_manager->state_ = _state;
   voxelmap_manager->feats_undistort_ = feats_undistort;
-
+//更新体素地图管理器的状态和点云
   // double t_prop = omp_get_wtime();
 
   // std::cout << "[ Mapping ] feats_undistort: " << feats_undistort->size() << std::endl;
   // std::cout << "[ Mapping ] predict cov: " << _state.cov.diagonal().transpose() << std::endl;
   // std::cout << "[ Mapping ] predict sta: " << state_propagat.pos_end.transpose() << state_propagat.vel_end.transpose() << std::endl;
 }
-
+//根据标志位选择处理VIO或LIO
 void LIVMapper::stateEstimationAndMapping() 
 {
   switch (LidarMeasures.lio_vio_flg) 

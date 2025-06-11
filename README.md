@@ -1,4 +1,8 @@
 # FAST-LIVO2
+#这是个人注释版本，用作学习记录。我们会从代码启动顺序的角度来进行代码注释与原理介绍。
+在fast-livo2只有一个launch文件，用于启动fast_livo2的节点。fastlivo_mapping这个节点。
+
+
 
 ## FAST-LIVO2: Fast, Direct LiDAR-Inertial-Visual Odometry
 
