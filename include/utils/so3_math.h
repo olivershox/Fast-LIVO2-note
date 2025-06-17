@@ -5,7 +5,7 @@
 #include <math.h>
 
 #define SKEW_SYM_MATRX(v) 0.0, -v[2], v[1], v[2], 0.0, -v[0], -v[1], v[0], 0.0
-
+//三维向量的反对称矩阵
 template <typename T> Eigen::Matrix<T, 3, 3> Exp(const Eigen::Matrix<T, 3, 1> &&ang)
 {
   T ang_norm = ang.norm();
@@ -17,6 +17,7 @@ template <typename T> Eigen::Matrix<T, 3, 3> Exp(const Eigen::Matrix<T, 3, 1> &&
     K << SKEW_SYM_MATRX(r_axis);
     /// Roderigous Tranformation
     return Eye3 + std::sin(ang_norm) * K + (1.0 - std::cos(ang_norm)) * K * K;
+    //罗德里格斯公式，将三维旋转向量转换为对应的旋转矩阵
   }
   else { return Eye3; }
 }
