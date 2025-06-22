@@ -40,7 +40,7 @@ void VIOManager::setLidarToCameraExtrinsic(vector<double> &R, vector<double> &P)
 
 void VIOManager::initializeVIO()
 {
-  visual_submap = new SubSparseMap;
+  visual_submap = new SubSparseMap;//创建视觉子地图
 
   fx = cam->fx();
   fy = cam->fy();
@@ -84,7 +84,7 @@ void VIOManager::initializeVIO()
 
     border_flag.resize(length, 0);
 
-    std::vector<std::vector<V3D>>().swap(rays_with_sample_points);
+    std::vector<std::vector<V3D>>().swap(rays_with_sample_points);  // 使用 swap 方法将 rays_with_sample_points 与一个临时的空向量交换
     rays_with_sample_points.reserve(length);
     printf("grid_size: %d, grid_n_height: %d, grid_n_width: %d, length: %d\n", grid_size, grid_n_height, grid_n_width, length);
 
@@ -99,10 +99,11 @@ void VIOManager::initializeVIO()
         int index = (grid_row - 1) * grid_n_width + grid_col - 1;
 
         if (grid_row == 1 || grid_col == 1 || grid_row == grid_n_height || grid_col == grid_n_width) border_flag[index] = 1;
-
+        //计算网格中心点坐标
         int u = grid_size / 2 + (grid_col - 1) * grid_size;
         int v = grid_size / 2 + (grid_row - 1) * grid_size;
         // it[ u + v * width ] = 255;
+        //在不同深度上采样3D点
         for (float d_temp = d_min; d_temp <= d_max; d_temp += step)
         {
           V3D xyz;

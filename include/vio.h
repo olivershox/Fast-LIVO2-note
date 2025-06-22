@@ -22,46 +22,75 @@ which is included as part of this source code package.
 #include <vikit/robust_cost.h>
 #include <vikit/vision.h>
 #include <vikit/pinhole_camera.h>
-
+//子稀疏地图
+// 定义一个名为 SubSparseMap 的结构体，用于表示子稀疏地图
 struct SubSparseMap
 {
+  // 存储预测误差的向量
   vector<float> propa_errors;
+  // 存储实际误差的向量
   vector<float> errors;
+  // 存储仿射变换后的图像块的二维向量，每个元素是一个图像块的像素值向量
   vector<vector<float>> warp_patch;
+  // 存储搜索层级的向量
   vector<int> search_levels;
+  // 存储视觉点指针的向量
   vector<VisualPoint *> voxel_points;
+  // 存储逆曝光时间列表的向量
   vector<double> inv_expo_list;
+  // 存储从体素地图添加的带有方差的点的向量
   vector<pointWithVar> add_from_voxel_map;
 
+  // 构造函数，预分配内存以提高性能
   SubSparseMap()
   {
+    // 为 propa_errors 向量预分配 SIZE_LARGE 大小的内存
     propa_errors.reserve(SIZE_LARGE);
+    // 为 errors 向量预分配 SIZE_LARGE 大小的内存
     errors.reserve(SIZE_LARGE);
+    // 为 warp_patch 向量预分配 SIZE_LARGE 大小的内存
     warp_patch.reserve(SIZE_LARGE);
+    // 为 search_levels 向量预分配 SIZE_LARGE 大小的内存
     search_levels.reserve(SIZE_LARGE);
+    // 为 voxel_points 向量预分配 SIZE_LARGE 大小的内存
     voxel_points.reserve(SIZE_LARGE);
+    // 为 inv_expo_list 向量预分配 SIZE_LARGE 大小的内存
     inv_expo_list.reserve(SIZE_LARGE);
+    // 为 add_from_voxel_map 向量预分配 SIZE_SMALL 大小的内存
     add_from_voxel_map.reserve(SIZE_SMALL);
   };
 
+  // 重置函数，用于清空所有存储的数据
   void reset()
   {
+    // 清空 propa_errors 向量
     propa_errors.clear();
+    // 清空 errors 向量
     errors.clear();
+    // 清空 warp_patch 向量
     warp_patch.clear();
+    // 清空 search_levels 向量
     search_levels.clear();
+    // 清空 voxel_points 向量
     voxel_points.clear();
+    // 清空 inv_expo_list 向量
     inv_expo_list.clear();
+    // 清空 add_from_voxel_map 向量
     add_from_voxel_map.clear();
   }
 };
 
+// 定义一个名为 Warp 的类，用于表示仿射变换相关信息
 class Warp
 {
 public:
+  // 存储从当前帧到参考帧的仿射变换矩阵
   Matrix2d A_cur_ref;
+  // 存储搜索层级
   int search_level;
+  // 构造函数，初始化搜索层级和仿射变换矩阵
   Warp(int level, Matrix2d warp_matrix) : search_level(level), A_cur_ref(warp_matrix) {}
+  // 析构函数，当前为空，不执行额外操作
   ~Warp() {}
 };
 

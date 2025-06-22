@@ -470,43 +470,63 @@ void ImuProcess::UndistortPcl(LidarMeasureGroup &lidar_meas, StatesGroup &state_
    * update ***/
   if (lidar_meas.lio_vio_flg == LIO)
   {
+    // 初始化点云迭代器，指向点云的最后一个点
     auto it_pcl = pcl_wait_proc.points.end() - 1;
+    // 计算外部旋转矩阵，用于将点云从 IMU 坐标系转换到帧末坐标系
     M3D extR_Ri(Lid_rot_to_IMU.transpose() * state_inout.rot_end.transpose());
+    // 计算外部平移向量，用于将点云从 IMU 坐标系转换到帧末坐标系
     V3D exrR_extT(Lid_rot_to_IMU.transpose() * Lid_offset_to_IMU);
+    // 反向遍历 IMU 位姿，从最后一个位姿开始
     for (auto it_kp = IMUpose.end() - 1; it_kp != IMUpose.begin(); it_kp--)
     {
+      // 获取当前 IMU 位姿的前一个位姿
       auto head = it_kp - 1;
+      // 获取当前 IMU 位姿
       auto tail = it_kp;
+      // 从 IMU 位姿中提取旋转矩阵
       R_imu << MAT_FROM_ARRAY(head->rot);
+      // 从 IMU 位姿中提取加速度
       acc_imu << VEC_FROM_ARRAY(head->acc);
-      // cout<<"head imu acc: "<<acc_imu.transpose()<<endl;
+      // 从 IMU 位姿中提取速度
       vel_imu << VEC_FROM_ARRAY(head->vel);
+      // 从 IMU 位姿中提取位置
       pos_imu << VEC_FROM_ARRAY(head->pos);
+      // 从 IMU 位姿中提取角速度
       angvel_avr << VEC_FROM_ARRAY(head->gyr);
 
-
+      // 反向遍历点云，将点云从采集时刻的坐标系转换到帧末坐标系
       for (; it_pcl->curvature / double(1000) > head->offset_time; it_pcl--)
       {
+        // 计算点云采集时刻与当前 IMU 位姿时刻的时间差
         dt = it_pcl->curvature / double(1000) - head->offset_time;
 
         /* Transform to the 'end' frame */
+        // 计算点云采集时刻的旋转矩阵
         M3D R_i(R_imu * Exp(angvel_avr, dt));
+        // 计算点云采集时刻相对于帧末位置的平移向量
         V3D T_ei(pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt - state_inout.pos_end);
 
+        // 获取当前点云的坐标
         V3D P_i(it_pcl->x, it_pcl->y, it_pcl->z);
  
+        // 将点云从采集时刻的坐标系转换到帧末坐标系
         V3D P_compensate = (extR_Ri * (R_i * (Lid_rot_to_IMU * P_i + Lid_offset_to_IMU) + T_ei) - exrR_extT);
 
         /// save Undistorted points and their rotation
+        // 将去畸变后的点云坐标赋值给原始点云
         it_pcl->x = P_compensate(0);
         it_pcl->y = P_compensate(1);
         it_pcl->z = P_compensate(2);
 
+        // 若遍历到点云的第一个点，则跳出内层循环
         if (it_pcl == pcl_wait_proc.points.begin()) break;
       }
     }
+    // 将去畸变后的点云赋值给输出点云
     pcl_out = pcl_wait_proc;
+    // 清空临时存储的点云
     pcl_wait_proc.clear();
+    // 清空存储的 IMU 位姿
     IMUpose.clear();
   }
   // printf("[ IMU ] time forward: %lf, backward: %lf.\n", t1 - t0, omp_get_wtime() - t1);
