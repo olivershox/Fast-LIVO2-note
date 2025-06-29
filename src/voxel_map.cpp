@@ -51,7 +51,7 @@ void loadVoxelConfig(ros::NodeHandle &nh, VoxelMapConfig &voxel_config)
   nh.param<int>("local_map/half_map_size", voxel_config.half_map_size, 100);
   nh.param<double>("local_map/sliding_thresh", voxel_config.sliding_thresh, 8);
 }
-
+//根据点云初始化平面，判断是否能构成一个平面
 void VoxelOctoTree::init_plane(const std::vector<pointWithVar> &points, VoxelPlane *plane)
 {
   plane->plane_var_ = Eigen::Matrix<double, 6, 6>::Zero();
@@ -60,6 +60,7 @@ void VoxelOctoTree::init_plane(const std::vector<pointWithVar> &points, VoxelPla
   plane->normal_ = Eigen::Vector3d::Zero();
   plane->points_size_ = points.size();
   plane->radius_ = 0;
+  //计算点云的协防差矩阵和中心点
   for (auto pv : points)
   {
     plane->covariance_ += pv.point_w * pv.point_w.transpose();
@@ -67,28 +68,34 @@ void VoxelOctoTree::init_plane(const std::vector<pointWithVar> &points, VoxelPla
   }
   plane->center_ = plane->center_ / plane->points_size_;
   plane->covariance_ = plane->covariance_ / plane->points_size_ - plane->center_ * plane->center_.transpose();
-  Eigen::EigenSolver<Eigen::Matrix3d> es(plane->covariance_);
-  Eigen::Matrix3cd evecs = es.eigenvectors();
-  Eigen::Vector3cd evals = es.eigenvalues();
+  //对协方差矩阵进行特征值分解
+  Eigen::EigenSolver<Eigen::Matrix3d> es(plane->covariance_);//创建特征值求解器
+  Eigen::Matrix3cd evecs = es.eigenvectors();//获取特征向量
+  Eigen::Vector3cd evals = es.eigenvalues();//获取特征值
   Eigen::Vector3d evalsReal;
-  evalsReal = evals.real();
+  evalsReal = evals.real(); //获取特征值的实部
+  //找出最小、最大和中间的特征值索引
   Eigen::Matrix3f::Index evalsMin, evalsMax;
   evalsReal.rowwise().sum().minCoeff(&evalsMin);
   evalsReal.rowwise().sum().maxCoeff(&evalsMax);
   int evalsMid = 3 - evalsMin - evalsMax;
+  //根据特征值索引获取对应的特征向量
   Eigen::Vector3d evecMin = evecs.real().col(evalsMin);
   Eigen::Vector3d evecMid = evecs.real().col(evalsMid);
   Eigen::Vector3d evecMax = evecs.real().col(evalsMax);
+  //初始化雅可比矩阵 J_Q
   Eigen::Matrix3d J_Q;
   J_Q << 1.0 / plane->points_size_, 0, 0, 0, 1.0 / plane->points_size_, 0, 0, 0, 1.0 / plane->points_size_;
   // && evalsReal(evalsMid) > 0.05
   //&& evalsReal(evalsMid) > 0.01
+  //判断是否是平面，如果最小特征值小于阈值，认定为平面
   if (evalsReal(evalsMin) < planer_threshold_)
   {
     for (int i = 0; i < points.size(); i++)
     {
-      Eigen::Matrix<double, 6, 3> J;
-      Eigen::Matrix3d F;
+      Eigen::Matrix<double, 6, 3> J; //初始化雅可比矩阵J
+      Eigen::Matrix3d F; //初始化矩阵F
+      //计算矩阵F
       for (int m = 0; m < 3; m++)
       {
         if (m != (int)evalsMin)
@@ -99,7 +106,7 @@ void VoxelOctoTree::init_plane(const std::vector<pointWithVar> &points, VoxelPla
           F.row(m) = F_m;
         }
         else
-        {
+        { // 如果是最小特征值对应的特征向量，则设置为零
           Eigen::Matrix<double, 1, 3> F_m;
           F_m << 0, 0, 0;
           F.row(m) = F_m;
@@ -109,17 +116,18 @@ void VoxelOctoTree::init_plane(const std::vector<pointWithVar> &points, VoxelPla
       J.block<3, 3>(3, 0) = J_Q;
       plane->plane_var_ += J * points[i].var * J.transpose();
     }
-
+    //计算平面的法向量和中心点
     plane->normal_ << evecs.real()(0, evalsMin), evecs.real()(1, evalsMin), evecs.real()(2, evalsMin);
     plane->y_normal_ << evecs.real()(0, evalsMid), evecs.real()(1, evalsMid), evecs.real()(2, evalsMid);
     plane->x_normal_ << evecs.real()(0, evalsMax), evecs.real()(1, evalsMax), evecs.real()(2, evalsMax);
     plane->min_eigen_value_ = evalsReal(evalsMin);
     plane->mid_eigen_value_ = evalsReal(evalsMid);
     plane->max_eigen_value_ = evalsReal(evalsMax);
-    plane->radius_ = sqrt(evalsReal(evalsMax));
+    plane->radius_ = sqrt(evalsReal(evalsMax));//平面半径
     plane->d_ = -(plane->normal_(0) * plane->center_(0) + plane->normal_(1) * plane->center_(1) + plane->normal_(2) * plane->center_(2));
     plane->is_plane_ = true;
     plane->is_update_ = true;
+     // 若平面未初始化，分配唯一 ID 并标记为已初始化
     if (!plane->is_init_)
     {
       plane->id_ = voxel_plane_id;
@@ -133,7 +141,15 @@ void VoxelOctoTree::init_plane(const std::vector<pointWithVar> &points, VoxelPla
     plane->is_plane_ = false;
   }
 }
-
+/*
+功能：初始化八叉树节点。
+步骤：
+检查临时点云数量是否超过 points_size_threshold_。
+若超过，调用 init_plane 函数判断这些点是否构成平面。
+若构成平面，将 octo_state_ 设为 0 表示节点为叶子节点；若点云数量超过 max_points_num_，禁用更新并清空临时点云。
+若不构成平面，将 octo_state_ 设为 1 表示节点有子节点，调用 cut_octo_tree 函数分割节点。
+标记节点已初始化，重置新点数量。
+*/
 void VoxelOctoTree::init_octo_tree()
 {
   if (temp_points_.size() > points_size_threshold_)
@@ -159,7 +175,14 @@ void VoxelOctoTree::init_octo_tree()
     new_points_ = 0;
   }
 }
-
+/*
+功能：将当前八叉树节点分割为 8 个子节点。
+步骤：
+若当前节点层级达到或超过 max_layer_，将 octo_state_ 设为 0 并返回。
+遍历临时点云，根据点的位置将其分配到对应的子节点。
+若子节点不存在，创建新的子节点并初始化其属性。
+对每个子节点，若临时点云数量超过阈值，调用 init_plane 函数判断是否构成平面，根据结果设置节点状态，若不构成平面则递归调用 cut_octo_tree 函数。
+*/
 void VoxelOctoTree::cut_octo_tree()
 {
   if (layer_ >= max_layer_)
@@ -215,7 +238,13 @@ void VoxelOctoTree::cut_octo_tree()
     }
   }
 }
-
+/*
+功能：向八叉树中插入新点并更新节点。
+步骤：
+若节点未初始化，添加新点，若临时点云数量超过阈值则调用 init_octo_tree 函数。
+若节点已初始化且为平面节点，若允许更新，添加新点，若新点数量超过 update_size_threshold_ 则重新判断平面，若点云数量超过 max_points_num_ 则禁用更新。
+若节点已初始化且非平面节点，若当前层级小于 max_layer_，将点分配到对应的子节点并递归调用 UpdateOctoTree 函数；否则，按平面节点的更新逻辑处理。
+*/
 void VoxelOctoTree::UpdateOctoTree(const pointWithVar &pv)
 {
   if (!init_octo_)
@@ -288,7 +317,12 @@ void VoxelOctoTree::UpdateOctoTree(const pointWithVar &pv)
     }
   }
 }
-
+/*
+功能：根据点云位置查找对应的八叉树节点。
+步骤：
+若节点未初始化或为平面节点或层级已达到最大，返回当前节点。
+根据点云位置确定子节点索引，若子节点存在，递归调用 find_correspond 函数查找；否则，返回当前节点。
+*/
 VoxelOctoTree *VoxelOctoTree::find_correspond(Eigen::Vector3d pw)
 {
   if (!init_octo_ || plane_ptr_->is_plane_ || (layer_ >= max_layer_)) return this;
@@ -303,7 +337,7 @@ VoxelOctoTree *VoxelOctoTree::find_correspond(Eigen::Vector3d pw)
 
   return (leaves_[leafnum] != nullptr) ? leaves_[leafnum]->find_correspond(pw) : this;
 }
-
+// 插入点云到八叉树
 VoxelOctoTree *VoxelOctoTree::Insert(const pointWithVar &pv)
 {
   if ((!init_octo_) || (init_octo_ && plane_ptr_->is_plane_) || (init_octo_ && (!plane_ptr_->is_plane_) && (layer_ >= max_layer_)))

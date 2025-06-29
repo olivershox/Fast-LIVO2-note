@@ -186,7 +186,15 @@ void VIOManager::resetGrid()
   // map_cur_frame.clear();
   // sample_points.clear();
 // }
-
+/**
+ * @brief 计算投影雅可比矩阵
+ * 
+ * 该函数根据输入的三维点 p 计算投影雅可比矩阵 J，用于描述三维点在相机投影过程中的变化率。
+ * 雅可比矩阵描述了从三维空间到二维图像平面投影的偏导数关系。
+ * 
+ * @param p 输入的三维点，类型为 V3D，通常表示相机坐标系下的点坐标
+ * @param J 输出的投影雅可比矩阵，类型为 MD(2, 3)，存储计算得到的雅可比矩阵
+ */
 void VIOManager::computeProjectionJacobian(V3D p, MD(2, 3) & J)
 {
   const double x = p[0];
@@ -200,22 +208,34 @@ void VIOManager::computeProjectionJacobian(V3D p, MD(2, 3) & J)
   J(1, 1) = fy * z_inv;
   J(1, 2) = -fy * y * z_inv_2;
 }
-
+/**
+ * @brief 从图像中提取指定位置的图像块，并进行双线性插值
+ * 
+ * 该函数从输入图像中提取以指定点为中心的图像块，并使用双线性插值计算每个像素的值。
+ * 图像块的大小由 patch_size 决定，同时支持不同的金字塔层级。
+ * 
+ * @param img 输入的图像，类型为 cv::Mat
+ * @param pc 图像块的中心位置，类型为 V2D，包含 (u, v) 坐标
+ * @param patch_tmp 用于存储提取的图像块的数组，类型为 float*
+ * @param level 图像金字塔的层级，用于缩放操作
+ */
 void VIOManager::getImagePatch(cv::Mat img, V2D pc, float *patch_tmp, int level)
 {
   const float u_ref = pc[0];
   const float v_ref = pc[1];
-  const int scale = (1 << level);
+  const int scale = (1 << level); //相当于2^level
   const int u_ref_i = floorf(pc[0] / scale) * scale;
-  const int v_ref_i = floorf(pc[1] / scale) * scale;
+  const int v_ref_i = floorf(pc[1] / scale) * scale; //整数部分
   const float subpix_u_ref = (u_ref - u_ref_i) / scale;
-  const float subpix_v_ref = (v_ref - v_ref_i) / scale;
+  const float subpix_v_ref = (v_ref - v_ref_i) / scale;//小数部分
+  //双线性插值
   const float w_ref_tl = (1.0 - subpix_u_ref) * (1.0 - subpix_v_ref);
   const float w_ref_tr = subpix_u_ref * (1.0 - subpix_v_ref);
   const float w_ref_bl = (1.0 - subpix_u_ref) * subpix_v_ref;
   const float w_ref_br = subpix_u_ref * subpix_v_ref;
+  //遍历图像块
   for (int x = 0; x < patch_size; x++)
-  {
+  { 
     uint8_t *img_ptr = (uint8_t *)img.data + (v_ref_i - patch_size_half * scale + x * scale) * width + (u_ref_i - patch_size_half * scale);
     for (int y = 0; y < patch_size; y++, img_ptr += scale)
     {
@@ -224,7 +244,7 @@ void VIOManager::getImagePatch(cv::Mat img, V2D pc, float *patch_tmp, int level)
     }
   }
 }
-
+//将一个新的视觉点插入到体素地图中
 void VIOManager::insertPointIntoVoxelMap(VisualPoint *pt_new)
 {
   V3D pt_w(pt_new->pos_[0], pt_new->pos_[1], pt_new->pos_[2]);
@@ -236,36 +256,52 @@ void VIOManager::insertPointIntoVoxelMap(VisualPoint *pt_new)
     if (loc_xyz[j] < 0) { loc_xyz[j] -= 1.0; }
   }
   VOXEL_LOCATION position((int64_t)loc_xyz[0], (int64_t)loc_xyz[1], (int64_t)loc_xyz[2]);
-  auto iter = feat_map.find(position);
+  auto iter = feat_map.find(position);//feat_map 类型是unordered_map<VOXEL_LOCATION, VOXEL_POINTS *>
   if (iter != feat_map.end())
-  {
+  {//如果体素已经存在，将新点添加到体素的点列表中
     iter->second->voxel_points.push_back(pt_new);
     iter->second->count++;
   }
   else
-  {
+  {//如果体素不存在，创建一个新的体素点列表并将新点添加进去
     VOXEL_POINTS *ot = new VOXEL_POINTS(0);
     ot->voxel_points.push_back(pt_new);
     feat_map[position] = ot;
   }
 }
+/**
+ * @brief 计算当前帧相对于参考帧的仿射变换矩阵 （单应矩阵H）
+ * 
+ * 该函数根据相机模型、参考像素位置、参考三维点、参考法向量、当前帧与参考帧之间的变换以及参考层级，
+ * 计算出一个仿射变换矩阵 A_cur_ref，用于将参考帧的像素位置映射到当前帧。
+ * 
+ * @param cam 相机模型，类型为 vk::AbstractCamera
+ * @param px_ref 参考像素位置，类型为 V2D
+ * @param xyz_ref 参考三维点位置，类型为 V3D
+ * @param normal_ref 参考法向量，类型为 V3D
+ * @param T_cur_ref 当前帧与参考帧之间的变换，类型为 SE3
+ * @param level_ref 参考层级，类型为 int
+ * @param A_cur_ref 输出的仿射变换矩阵，类型为 Matrix2d
+ */
 
 void VIOManager::getWarpMatrixAffineHomography(const vk::AbstractCamera &cam, const V2D &px_ref, const V3D &xyz_ref, const V3D &normal_ref,
                                                   const SE3 &T_cur_ref, const int level_ref, Matrix2d &A_cur_ref)
 {
   // create homography matrix
-  const V3D t = T_cur_ref.inverse().translation();
+  const V3D t = T_cur_ref.inverse().translation();// 先获取当前帧到参考帧变换的逆变换的平移向量
   const Eigen::Matrix3d H_cur_ref =
-      T_cur_ref.rotation_matrix() * (normal_ref.dot(xyz_ref) * Eigen::Matrix3d::Identity() - t * normal_ref.transpose());
+      T_cur_ref.rotation_matrix() * (normal_ref.dot(xyz_ref) * Eigen::Matrix3d::Identity() - t * normal_ref.transpose());// 计算单应性矩阵 H_cur_ref，用于将参考帧的点变换到当前帧
   // Compute affine warp matrix A_ref_cur using homography projection
   const int kHalfPatchSize = 4;
+  //计算参考像素位置在X方向偏移后的三维点
   V3D f_du_ref(cam.cam2world(px_ref + Eigen::Vector2d(kHalfPatchSize, 0) * (1 << level_ref)));
+  //计算参考像素位置在Y方向偏移后的三维点
   V3D f_dv_ref(cam.cam2world(px_ref + Eigen::Vector2d(0, kHalfPatchSize) * (1 << level_ref)));
   //   f_du_ref = f_du_ref/f_du_ref[2];
   //   f_dv_ref = f_dv_ref/f_dv_ref[2];
-  const V3D f_cur(H_cur_ref * xyz_ref);
-  const V3D f_du_cur = H_cur_ref * f_du_ref;
-  const V3D f_dv_cur = H_cur_ref * f_dv_ref;
+  const V3D f_cur(H_cur_ref * xyz_ref);//通过单应矩阵将参考帧的三维点变换到当前帧
+  const V3D f_du_cur = H_cur_ref * f_du_ref;// 通过单应矩阵将参考帧的X方向偏移后的三维点变换到当前帧
+  const V3D f_dv_cur = H_cur_ref * f_dv_ref;// 通过单应矩阵将参考帧的Y方向偏移后的三维点变换到当前帧
   V2D px_cur(cam.world2cam(f_cur));
   V2D px_du_cur(cam.world2cam(f_du_cur));
   V2D px_dv_cur(cam.world2cam(f_dv_cur));
@@ -349,7 +385,16 @@ double VIOManager::calculateNCC(float *ref_patch, float *cur_patch, int patch_si
   }
   return numerator / sqrt(demoniator1 * demoniator2 + 1e-10);
 }
-
+/**
+ * @brief 从视觉稀疏地图中检索信息
+ * 
+ * 该函数从视觉稀疏地图中检索与当前帧相关的视觉点，并根据条件筛选出有效的点，
+ * 同时处理深度图生成、射线投射等操作，最终将符合条件的点添加到视觉子地图中。
+ * 
+ * @param img 当前帧的图像
+ * @param pg  输入点云数据，包含三维点和法向量
+ * @param plane_map 包含体素位置和体素八叉树指针的无序映射
+ */
 void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &pg, const unordered_map<VOXEL_LOCATION, VoxelOctoTree *> &plane_map)
 {
   if (feat_map.size() <= 0) return;
@@ -360,13 +405,15 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
   // downSizeFilter.filter(*pg_down);
 
   // resetRvizDisplay();
+  //重置视觉子地图
   visual_submap->reset();
 
   // Controls whether to include the visual submap from the previous frame.
+  //清空子特征地图，
   sub_feat_map.clear();
 
   float voxel_size = 0.5;
-
+  // 若不启用法线相关功能，清空变换映射
   if (!normal_en) warp_map.clear();
 
   cv::Mat depth_img = cv::Mat::zeros(height, width, CV_32FC1);
@@ -1783,7 +1830,17 @@ void VIOManager::dumpDataForColmap()
   fout_colmap << "0.0 0.0 -1" << std::endl;
   cnt++;
 }
-
+/**
+ * @brief 处理一帧图像，执行视觉惯性里程计（VIO）相关操作
+ * 
+ * 该函数负责处理输入的图像帧，包括图像预处理、状态更新、特征提取、
+ * 视觉地图点生成与更新等一系列操作，并输出各操作的耗时信息。
+ * 
+ * @param img 输入的图像帧
+ * @param pg 包含点及其方差的向量
+ * @param feat_map 包含体素位置和体素八叉树指针的无序映射
+ * @param img_time 图像帧的时间戳
+ */
 void VIOManager::processFrame(cv::Mat &img, vector<pointWithVar> &pg, const unordered_map<VOXEL_LOCATION, VoxelOctoTree *> &feat_map, double img_time)
 {
   if (width != img.cols || height != img.rows)
@@ -1794,7 +1851,7 @@ void VIOManager::processFrame(cv::Mat &img, vector<pointWithVar> &pg, const unor
   img_rgb = img.clone();
   img_cp = img.clone();
   // img_test = img.clone();
-
+  //若图像为三通道，转化为灰度图
   if (img.channels() == 3) cv::cvtColor(img, img, CV_BGR2GRAY);
 
   new_frame_.reset(new Frame(cam, img));
@@ -1804,28 +1861,29 @@ void VIOManager::processFrame(cv::Mat &img, vector<pointWithVar> &pg, const unor
 
   double t1 = omp_get_wtime();
 
+  //从视觉稀疏地图中检索特征点
   retrieveFromVisualSparseMap(img, pg, feat_map);
 
   double t2 = omp_get_wtime();
-
+  //计算雅可比矩阵并更新EKF
   computeJacobianAndUpdateEKF(img);
 
   double t3 = omp_get_wtime();
-
+  //生成视觉地图点
   generateVisualMapPoints(img, pg);
 
   double t4 = omp_get_wtime();
-  
+  //绘制跟踪到的点
   plotTrackedPoints();
-
+  // 若绘制标志位为真，将参考帧的补丁投影到当前帧
   if (plot_flag) projectPatchFromRefToCur(feat_map);
 
   double t5 = omp_get_wtime();
-
+  // 更新视觉地图点
   updateVisualMapPoints(img);
 
   double t6 = omp_get_wtime();
-
+  // 更新参考补丁
   updateReferencePatch(feat_map);
 
   double t7 = omp_get_wtime();

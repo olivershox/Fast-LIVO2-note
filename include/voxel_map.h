@@ -96,16 +96,18 @@ typedef struct VoxelPlane
 class VOXEL_LOCATION
 {
 public:
+//存储体素在三维空间中的坐标，使用int64_t类型以支持大范围的体素位置
   int64_t x, y, z;
 
   VOXEL_LOCATION(int64_t vx = 0, int64_t vy = 0, int64_t vz = 0) : x(vx), y(vy), z(vz) {}
-
+  // 重载==运算符，用于比较体素位置
   bool operator==(const VOXEL_LOCATION &other) const { return (x == other.x && y == other.y && z == other.z); }
 };
 
 // Hash value
 namespace std
 {
+//对std::hash模板进行特化，为VOXEL_LOCATION类型提供自定义的哈希函数
 template <> struct hash<VOXEL_LOCATION>
 {
   int64_t operator()(const VOXEL_LOCATION &s) const
@@ -113,6 +115,7 @@ template <> struct hash<VOXEL_LOCATION>
     using std::hash;
     using std::size_t;
     return ((((s.z) * VOXELMAP_HASH_P) % VOXELMAP_MAX_N + (s.y)) * VOXELMAP_HASH_P) % VOXELMAP_MAX_N + (s.x);
+    //通过运算将体素位置的x、y、z坐标转换为一个唯一的哈希值
   }
 };
 } // namespace std
